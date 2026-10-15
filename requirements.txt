@@ -1,0 +1,4 @@
+flask
+dnspython
+requests
+xhtml2pdf

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: A4; margin: 2cm 1.5cm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #1a1a1a; }
+  * { word-wrap: break-word; overflow-wrap: break-word; }
+  h1 { font-size: 18pt; margin-bottom: 2px; }
+  h2 { font-size: 13pt; margin-top: 20px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+  h3 { font-size: 11pt; margin-top: 10px; margin-bottom: 4px; }
+  .muted { color: #666; font-size: 9pt; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
+  td, th { border: 1px solid #ddd; padding: 5px 7px; font-size: 9pt; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; }
+  .summary-table td, .summary-table th { text-align: center; width: 20%; }
+  .summary-table td { font-weight: bold; font-size: 13pt; }
+
+  .finding { border: 1px solid #ddd; border-left: 5px solid #999; padding: 8px 12px; margin-top: 10px; }
+  .finding-critical { border-left-color: #b91c1c; }
+  .finding-high { border-left-color: #c2410c; }
+  .finding-medium { border-left-color: #b45309; }
+  .finding-low { border-left-color: #1d4ed8; }
+  .finding-informational { border-left-color: #6b7280; }
+  .finding h4 { margin: 6px 0 4px; font-size: 10.5pt; }
+  .finding p { margin: 4px 0; }
+
+  .badge { display: inline-block; padding: 2px 9px; font-size: 8pt; font-weight: bold; color: white; border-radius: 3px; }
+  .badge-critical { background: #b91c1c; }
+  .badge-high { background: #c2410c; }
+  .badge-medium { background: #b45309; }
+  .badge-low { background: #1d4ed8; }
+  .badge-informational { background: #6b7280; }
+
+  .explain { background: #f8fafc; padding: 8px 10px; margin: 6px 0; border-radius: 3px; }
+  .explain p { margin: 5px 0; font-size: 9pt; line-height: 1.4; }
+  .explain b { color: #1e3a8a; }
+
+  .evidence-box { background: #f1f5f9; padding: 5px 8px; font-size: 8.5pt; font-family: Courier, monospace; margin: 4px 0; }
+  .footer-note { margin-top: 24px; font-size: 8pt; color: #888; border-top: 1px solid #ddd; padding-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>CI-Watch — Vulnerability Assessment Report</h1>
+  <p class="muted">Target: {{ domain }} | Scan #{{ scan_id }} | Dijalankan: {{ scanned_at }} UTC | Tzu Chi Hospital Tech Security / GRC</p>
+
+  <h2>Ringkasan Severity</h2>
+  <table class="summary-table">
+    <tr><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Informational</th></tr>
+    <tr><td>{{ counts.Critical }}</td><td>{{ counts.High }}</td><td>{{ counts.Medium }}</td><td>{{ counts.Low }}</td><td>{{ counts.Informational }}</td></tr>
+  </table>
+
+  <h2>Temuan</h2>
+  {% if not result.findings %}
+    <p class="muted">Tidak ada temuan.</p>
+  {% endif %}
+  {% for f in result.findings %}
+  <div class="finding finding-{{ f.severity|lower }}">
+    <span class="badge badge-{{ f.severity|lower }}">{{ f.severity }}</span>
+    <span class="muted">{{ f.category }}</span>
+    <h4>{{ f.summary }}</h4>
+    {% if f.apa_itu %}
+    <div class="explain">
+      <p><b>Apa itu ini?</b> {{ f.apa_itu }}</p>
+      <p><b>Fungsinya apa?</b> {{ f.fungsi }}</p>
+      <p><b>Kalau bermasalah, dampaknya apa?</b> {{ f.dampak }}</p>
+    </div>
+    {% endif %}
+    <p><strong>Bukti teknis:</strong></p>
+    <div class="evidence-box">{{ f.evidence|breaklong }}</div>
+    <p><strong>Rekomendasi:</strong> {{ f.recommendation }}</p>
+  </div>
+  {% endfor %}
+
+  <h2>Detail Teknis Ringkas</h2>
+  <h3>TLS</h3>
+  {% if result.tls_result.error %}
+    <p class="muted">{{ result.tls_result.error }}</p>
+  {% else %}
+  <table>
+    <tr><td width="30%">Protocol</td><td>{{ result.tls_result.tls_version }}</td></tr>
+    <tr><td>Cipher</td><td>{{ result.tls_result.cipher }} ({{ result.tls_result.cipher_bits }} bits)</td></tr>
+    <tr><td>Issuer</td><td>{{ result.tls_result.issuer }}</td></tr>
+    <tr><td>Valid s/d</td><td>{{ result.tls_result.not_after[:10] }} ({{ result.tls_result.days_left }} hari lagi)</td></tr>
+  </table>
+  {% endif %}
+
+  <h3>Subdomain (crt.sh)</h3>
+  <p style="font-size: 9pt;">{{ result.subdomains|join(', ') if result.subdomains else 'Tidak ada' }}</p>
+
+  <h3>Sensitive Path — path dengan status 200 (accessible)</h3>
+  {% set exposed = result.sensitive_results|selectattr('status', 'equalto', 200)|list %}
+  {% if result.soft_404_baseline and result.soft_404_baseline.status == 200 %}
+  <p class="muted" style="font-size: 8.5pt;">Catatan: baseline probe (path acak yang sengaja dibuat tidak ada) juga mengembalikan status 200 — server ini kemungkinan soft-404 untuk semua path tak dikenal. Baris bertanda * kemungkinan BUKAN exposure nyata, lihat temuan "soft-404" di atas.</p>
+  {% endif %}
+  {% if exposed %}
+  <table>
+    <tr><th>Path</th><th>Status</th></tr>
+    {% for s in exposed %}<tr><td>{{ s.path }}{{ ' *' if s.likely_soft_404 else '' }}</td><td>{{ s.status }}</td></tr>{% endfor %}
+  </table>
+  {% else %}
+  <p>Tidak ada path sensitif yang accessible (HTTP 200).</p>
+  {% endif %}
+
+  <p class="footer-note">Dibuat otomatis oleh CI-Watch. Laporan ini untuk kebutuhan internal Tech Security / GRC Tzu Chi Hospital — tidak untuk disebarluaskan tanpa otorisasi.</p>
+</body>
+</html>

@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}CI-Watch — Report {{ domain }}{% endblock %}
+{% block content %}
+<section class="panel report-header">
+  <div>
+    <h1>Report: {{ domain }}</h1>
+    <p class="muted">Scan #{{ scan_id }} — dijalankan {{ scanned_at }} UTC</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('report_pdf', scan_id=scan_id) }}">Export PDF</a>
+    <a class="btn btn-secondary" href="{{ url_for('report_log', scan_id=scan_id) }}">Download Audit Log</a>
+    <a class="btn btn-secondary" href="{{ url_for('index') }}">Scan Baru</a>
+    <form action="{{ url_for('delete_scan', scan_id=scan_id) }}" method="post" onsubmit="return confirm('Hapus hasil scan ini?');">
+      <button type="submit" class="btn-delete" title="Hapus scan ini">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        Hapus Scan Ini
+      </button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Ringkasan Severity</h2>
+  <div class="severity-cards">
+    <div class="sev-card sev-critical"><span class="num">{{ counts.Critical }}</span><span>Critical</span></div>
+    <div class="sev-card sev-high"><span class="num">{{ counts.High }}</span><span>High</span></div>
+    <div class="sev-card sev-medium"><span class="num">{{ counts.Medium }}</span><span>Medium</span></div>
+    <div class="sev-card sev-low"><span class="num">{{ counts.Low }}</span><span>Low</span></div>
+    <div class="sev-card sev-info"><span class="num">{{ counts.Informational }}</span><span>Informational</span></div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Temuan</h2>
+  {% if not result.findings %}
+    <p class="muted">Tidak ada temuan.</p>
+  {% endif %}
+  {% for f in result.findings %}
+  <div class="finding sev-border-{{ f.severity|lower }}">
+    <div class="finding-head">
+      <span class="badge sev-badge-{{ f.severity|lower }}">{{ f.severity }}</span>
+      <span class="category">{{ f.category }}</span>
+    </div>
+    <h3>{{ f.summary }}</h3>
+    {% if f.apa_itu %}
+    <dl class="explain">
+      <dt>Apa itu ini?</dt><dd>{{ f.apa_itu }}</dd>
+      <dt>Fungsinya apa?</dt><dd>{{ f.fungsi }}</dd>
+      <dt>Kalau bermasalah, dampaknya apa?</dt><dd>{{ f.dampak }}</dd>
+    </dl>
+    {% endif %}
+    <p><strong>Bukti teknis:</strong> <code>{{ f.evidence }}</code></p>
+    <p><strong>Rekomendasi perbaikan:</strong> {{ f.recommendation }}</p>
+  </div>
+  {% endfor %}
+</section>
+
+<section class="panel">
+  <h2>Detail Teknis</h2>
+
+  <div class="tech-block">
+    <h3>DNS Recon — Lokal vs Publik (8.8.8.8)</h3>
+    {% set local_view = result.dns_views.get('local', {}) %}
+    {% set public_view = result.dns_views.get('public_8.8.8.8', {}) %}
+    <div class="table-scroll">
+    <table class="data-table wide compare-table">
+      <thead><tr><th>Record</th><th>Lokal (jaringan internal)</th><th>Publik (8.8.8.8)</th></tr></thead>
+      <tbody>
+      {% for rtype in ['A', 'MX', 'NS', 'TXT', 'DMARC'] %}
+        <tr>
+          <td class="rtype-cell">{{ rtype }}</td>
+          <td class="wrap-cell">{% set d = local_view.get(rtype, {}) %}{% if d.error %}<em class="muted">{{ d.error }}</em>{% else %}{{ d['values']|join(', ') }}{% endif %}</td>
+          <td class="wrap-cell">{% set d = public_view.get(rtype, {}) %}{% if d.error %}<em class="muted">{{ d.error }}</em>{% else %}{{ d['values']|join(', ') }}{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="tech-block">
+    <h3>TLS</h3>
+    {% if result.tls_result.error %}
+      <p class="muted">{{ result.tls_result.error }}</p>
+    {% else %}
+    <table class="data-table">
+      <tr><td>Protocol</td><td>{{ result.tls_result.tls_version }}</td></tr>
+      <tr><td>Cipher</td><td>{{ result.tls_result.cipher }} ({{ result.tls_result.cipher_bits }} bits)</td></tr>
+      <tr><td>Subject</td><td>{{ result.tls_result.subject }}</td></tr>
+      <tr><td>Issuer</td><td>{{ result.tls_result.issuer }}</td></tr>
+      <tr><td>Masa berlaku</td><td>{{ result.tls_result.not_before[:10] }} s/d {{ result.tls_result.not_after[:10] }} <span class="{{ 'sev-high' if result.tls_result.days_left < 30 else '' }}">({{ result.tls_result.days_left }} hari lagi)</span></td></tr>
+    </table>
+    {% endif %}
+  </div>
+
+  <div class="tech-block">
+    <h3>robots.txt / sitemap.xml</h3>
+    <table class="data-table">
+      {% for name, data in result.robots.items() %}
+      <tr><td>{{ name }}</td><td>HTTP {{ data.status }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div class="tech-block">
+    <h3>Header Keamanan per Halaman</h3>
+    <div class="table-scroll">
+    <table class="data-table wide">
+      <thead><tr><th>Path</th><th>Status</th><th>Header Keamanan (HSTS / CSP / XFO / XCTO)</th><th>Server</th><th>X-Powered-By</th></tr></thead>
+      <tbody>
+      {% for h in result.header_results %}
+        <tr>
+          <td>{{ h.path }}</td>
+          <td>{{ h.status if h.status else 'ERROR' }}</td>
+          <td class="header-badges">
+            <span class="mini-badge {{ 'mini-ok' if h.headers and h.headers.get('Strict-Transport-Security') else 'mini-missing' }}">HSTS</span>
+            <span class="mini-badge {{ 'mini-ok' if h.headers and h.headers.get('Content-Security-Policy') else 'mini-missing' }}">CSP</span>
+            <span class="mini-badge {{ 'mini-ok' if h.headers and h.headers.get('X-Frame-Options') else 'mini-missing' }}">XFO</span>
+            <span class="mini-badge {{ 'mini-ok' if h.headers and h.headers.get('X-Content-Type-Options') else 'mini-missing' }}">XCTO</span>
+          </td>
+          <td>{{ h.headers.get('Server', '-') if h.headers else '-' }}</td>
+          <td>{{ h.headers.get('X-Powered-By', '-') if h.headers else '-' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted legend">Hijau = header ada, abu-abu = header tidak ditemukan.</p>
+  </div>
+
+  <div class="tech-block">
+    <h3>Sensitive Path Check ({{ result.sensitive_results|length }} path diuji)</h3>
+    <div class="table-scroll">
+    <table class="data-table sensitive-table">
+      <thead><tr><th>Path</th><th>Status</th><th>Catatan</th></tr></thead>
+      <tbody>
+      {% for s in result.sensitive_results %}
+        <tr class="{{ 'row-soft404' if s.likely_soft_404 else ('row-exposed' if s.status == 200 else '') }}">
+          <td>{{ s.path }}</td>
+          <td>{{ s.status if s.status else 'ERROR: ' + s.get('error', '') }}</td>
+          <td>{{ 'Kemungkinan soft-404 (identik dengan baseline)' if s.likely_soft_404 else '' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if result.soft_404_baseline and result.soft_404_baseline.status == 200 %}
+    <p class="muted legend">Baseline probe (path acak yang sengaja dibuat tidak ada) juga mengembalikan status 200 — server ini kemungkinan soft-404 untuk semua path tak dikenal. Baris berwarna kuning di atas kemungkinan BUKAN exposure nyata, lihat temuan "soft-404" di bagian atas untuk detail.</p>
+    {% endif %}
+  </div>
+
+  <div class="tech-block">
+    <h3>Subdomain (crt.sh) {% if result.subdomains %}— {{ result.subdomains|length }} ditemukan{% endif %}</h3>
+    {% if result.crtsh_error %}
+      <p class="muted">crt.sh lookup gagal: {{ result.crtsh_error }}</p>
+    {% elif not result.subdomains %}
+      <p class="muted">Tidak ada subdomain ditemukan.</p>
+    {% else %}
+    <div class="subdomain-tags">
+      {% for s in result.subdomains %}<span class="tag">{{ s }}</span>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Audit Log</h2>
+  <p class="muted">Catatan teknis mentah semua command &amp; pengecekan yang dijalankan scanner beserta waktunya (timestamp) — bukan untuk dibaca sehari-hari, tapi sebagai <strong>audit trail</strong>: bukti bahwa pengujian benar-benar dilakukan, kapan, dan dengan cara apa. Berguna untuk dokumentasi compliance/GRC atau kalau hasil scan perlu direproduksi/diverifikasi ulang.</p>
+  <pre class="log-box">{{ log_text }}</pre>
+</section>
+{% endblock %}

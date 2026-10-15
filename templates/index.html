@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}CI-Watch — Scan Baru{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>Scan Baru</h1>
+  <p class="muted">Masukkan domain, CI-Watch otomatis mengecek semuanya: DNS (lokal vs publik), header keamanan di seluruh halaman utama, seluruh path sensitif standar, TLS, dan subdomain via Certificate Transparency (crt.sh). Semua request bersifat read-only (GET/HEAD/DNS query), tidak ada exploitasi.</p>
+  <form action="{{ url_for('scan') }}" method="post">
+    <label for="domain">Domain target</label>
+    <input type="text" id="domain" name="domain" placeholder="contoh: tzuchihospital.co.id" required>
+
+    <details class="auth-scan-toggle">
+      <summary>Authenticated Scan (opsional) — isi kalau punya kredensial login untuk target</summary>
+      <p class="muted">Kalau diisi, CI-Watch login dulu pakai kredensial ini sebelum scan, lalu memakai session hasil login untuk: cek atribut keamanan cookie session yang sebenarnya, coba akses path/endpoint yang cuma kebuka setelah login, dan re-cek security header di halaman authenticated. Kosongkan semua field ini untuk scan black-box biasa (tanpa login) seperti sebelumnya. <strong>Pakai hanya kredensial test/dummy yang memang untuk keperluan assessment — jangan kredensial akun pasien/staff asli.</strong></p>
+      <div class="grid-2">
+        <div>
+          <label for="login_path">Path halaman/endpoint login</label>
+          <input type="text" id="login_path" name="login_path" placeholder="/login">
+        </div>
+        <div></div>
+        <div>
+          <label for="login_user_field">Nama field username di form login</label>
+          <input type="text" id="login_user_field" name="login_user_field" placeholder="username / email">
+        </div>
+        <div>
+          <label for="login_pass_field">Nama field password di form login</label>
+          <input type="text" id="login_pass_field" name="login_pass_field" placeholder="password">
+        </div>
+        <div>
+          <label for="login_username">Username/email (test)</label>
+          <input type="text" id="login_username" name="login_username" autocomplete="off">
+        </div>
+        <div>
+          <label for="login_password">Password (test)</label>
+          <input type="password" id="login_password" name="login_password" autocomplete="off">
+        </div>
+      </div>
+    </details>
+
+    <button type="submit">Mulai Scan</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Riwayat Scan</h2>
+  {% if not history %}
+    <p class="muted">Belum ada scan.</p>
+  {% else %}
+  <table class="history-table">
+    <thead>
+      <tr><th>ID</th><th>Domain</th><th>Waktu (UTC)</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Info</th><th colspan="2"></th></tr>
+    </thead>
+    <tbody>
+      {% for h in history %}
+      <tr>
+        <td>{{ h.id }}</td>
+        <td>{{ h.domain }}</td>
+        <td>{{ h.scanned_at }}</td>
+        <td class="sev-critical">{{ h.counts.Critical }}</td>
+        <td class="sev-high">{{ h.counts.High }}</td>
+        <td class="sev-medium">{{ h.counts.Medium }}</td>
+        <td class="sev-low">{{ h.counts.Low }}</td>
+        <td class="sev-info">{{ h.counts.Informational }}</td>
+        <td><a href="{{ url_for('report', scan_id=h.id) }}">Lihat Report</a></td>
+        <td>
+          <form action="{{ url_for('delete_scan', scan_id=h.id) }}" method="post" onsubmit="return confirm('Hapus hasil scan #{{ h.id }} ({{ h.domain }})?');">
+            <button type="submit" class="btn-delete" title="Hapus scan ini">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+              Hapus
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

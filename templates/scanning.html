@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}CI-Watch — Scanning {{ domain }}{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="scanning-head">
+    <div class="spinner"></div>
+    <div>
+      <h1>Sedang scan {{ domain }}...</h1>
+      <p class="muted" id="scan-status-text">Memulai scan — biasanya butuh 30–70 detik tergantung respons server target. Halaman ini otomatis pindah ke report begitu selesai.</p>
+    </div>
+  </div>
+  <pre id="scan-log" class="log-box scan-live-log"></pre>
+</section>
+<script>
+  var jobId = {{ job_id|tojson }};
+  var lastLen = 0;
+  function poll() {
+    fetch("/scan-status/" + jobId)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var logBox = document.getElementById("scan-log");
+        if (data.log && data.log.length > lastLen) {
+          logBox.textContent = data.log.join("\n");
+          lastLen = data.log.length;
+          logBox.scrollTop = logBox.scrollHeight;
+        }
+        if (data.status === "done") {
+          document.getElementById("scan-status-text").textContent = "Selesai! Mengalihkan ke report...";
+          window.location.href = "/report/" + data.scan_id;
+        } else if (data.status === "error") {
+          document.getElementById("scan-status-text").textContent = "Scan gagal: " + data.error;
+          document.querySelector(".spinner").style.display = "none";
+        } else {
+          setTimeout(poll, 1000);
+        }
+      })
+      .catch(function () { setTimeout(poll, 2000); });
+  }
+  poll();
+</script>
+{% endblock %}
